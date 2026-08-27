@@ -13,11 +13,16 @@ const RAW_RUNTIME_STATE =
     {\
       "name": "sentinel",\
       "reference": "workspace:."\
+    },\
+    {\
+      "name": "@sentinel/event-schema",\
+      "reference": "workspace:packages/event-schema"\
     }\
   ],\
   "enableTopLevelFallback": true,\
   "ignorePatternData": "(^(?:\\\\.yarn\\\\/sdks(?:\\\\/(?!\\\\.{1,2}(?:\\\\/|$))(?:(?:(?!(?:^|\\\\/)\\\\.{1,2}(?:\\\\/|$)).)*?)|$))$)",\
   "fallbackExclusionList": [\
+    ["@sentinel/event-schema", ["workspace:packages/event-schema"]],\
     ["sentinel", ["workspace:."]]\
   ],\
   "fallbackPool": [\
@@ -341,6 +346,15 @@ const RAW_RUNTIME_STATE =
           ["@rolldown/pluginutils", "npm:1.0.1"]\
         ],\
         "linkType": "HARD"\
+      }]\
+    ]],\
+    ["@sentinel/event-schema", [\
+      ["workspace:packages/event-schema", {\
+        "packageLocation": "./packages/event-schema/",\
+        "packageDependencies": [\
+          ["@sentinel/event-schema", "workspace:packages/event-schema"]\
+        ],\
+        "linkType": "SOFT"\
       }]\
     ]],\
     ["@standard-schema/spec", [\
