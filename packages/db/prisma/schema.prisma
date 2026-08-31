@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Organization {
+  id        String     @id @default(uuid())
+  name      String
+  createdAt DateTime   @default(now())
+  apiKeys   ApiKey[]
+  events    Event[]
+  incidents Incident[]
+}
+
+model ApiKey {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  hashedKey      String       @unique
+  label          String
+  createdAt      DateTime     @default(now())
+  revokedAt      DateTime?
+}
+
+model Event {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  sourceType     String
+  actorId        String?
+  resourceId     String?
+  actionType     String
+  outcomeStatus  String
+  confidence     Float
+  payload        Json
+  timestamp      DateTime
+  ingestedAt     DateTime     @default(now())
+  detections     Detection[]
+
+  @@index([organizationId, timestamp])
+}
+
+model Detection {
+  id            String    @id @default(uuid())
+  ruleId        String
+  evidenceLevel String
+  description   String
+  eventId       String
+  event         Event     @relation(fields: [eventId], references: [id])
+  incidentId    String?
+  incident      Incident? @relation(fields: [incidentId], references: [id])
+  createdAt     DateTime  @default(now())
+}
+
+model Incident {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  detections     Detection[]
+  createdAt      DateTime     @default(now())
+}
