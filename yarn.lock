@@ -405,11 +405,12 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@sentinel/db@workspace:packages/db":
+"@sentinel/db@workspace:*, @sentinel/db@workspace:packages/db":
   version: 0.0.0-use.local
   resolution: "@sentinel/db@workspace:packages/db"
   dependencies:
     "@prisma/client": "npm:^5.22.0"
+    "@sentinel/auth": "workspace:*"
     "@types/node": "npm:^26.4.0"
     prisma: "npm:^5.22.0"
   languageName: unknown
@@ -436,6 +437,7 @@ __metadata:
   resolution: "@sentinel/ingestion@workspace:apps/ingestion"
   dependencies:
     "@sentinel/auth": "workspace:*"
+    "@sentinel/db": "workspace:*"
     "@sentinel/event-schema": "workspace:*"
     "@sentinel/shared": "workspace:*"
     "@types/node": "npm:^26.4.0"

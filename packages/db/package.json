@@ -8,10 +8,12 @@
   "scripts": {
     "build": "prisma generate && tsc -b",
     "typecheck": "tsc --noEmit",
-    "migrate:dev": "prisma migrate dev"
+    "migrate:dev": "prisma migrate dev",
+    "seed": "node --env-file=.env dist/seed.js"
   },
   "dependencies": {
-    "@prisma/client": "^5.22.0"
+    "@prisma/client": "^5.22.0",
+    "@sentinel/auth": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",

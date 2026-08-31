@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { logger } from '@sentinel/shared';
-import { verifyApiKey } from '@sentinel/auth';
+import { hashApiKey } from '@sentinel/auth';
+import { findApiKeyByHash } from '@sentinel/db';
 import { isValidSentinelEvent } from './validation.js';
 
 export function registerRoutes(app: FastifyInstance): void {
@@ -11,8 +12,10 @@ export function registerRoutes(app: FastifyInstance): void {
     }
 
     const salt = process.env['SENTINEL_INGESTION_API_KEY_SALT'] ?? '';
-    const storedHash = process.env['SENTINEL_TEST_KEY_HASH'] ?? '';
-    if (!verifyApiKey(apiKey, salt, storedHash)) {
+    const hashedKey = hashApiKey(apiKey, salt);
+    const keyRecord = await findApiKeyByHash(hashedKey);
+
+    if (keyRecord === null) {
       return reply.code(401).send({ error: 'invalid api key' });
     }
 
@@ -20,7 +23,10 @@ export function registerRoutes(app: FastifyInstance): void {
       return reply.code(400).send({ error: 'invalid event payload' });
     }
 
-    logger.info('event accepted', { eventId: request.body.id });
+    logger.info('event accepted', {
+      eventId: request.body.id,
+      organizationId: keyRecord.organizationId,
+    });
     return reply.code(202).send({ accepted: true });
   });
 }
