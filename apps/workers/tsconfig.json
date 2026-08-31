@@ -1,0 +1,1 @@
+{"extends":"../../tsconfig.base.json","compilerOptions":{"outDir":"dist","rootDir":"src"},"include":["src"],"references":[{"path":"../../packages/event-schema"},{"path":"../../packages/shared"},{"path":"../../packages/detection-engine"},{"path":"../../packages/correlation-engine"},{"path":"../../packages/attack-graph"},{"path":"../../packages/redaction"}]}
