@@ -305,6 +305,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@sentinel/attack-graph@workspace:packages/attack-graph":
+  version: 0.0.0-use.local
+  resolution: "@sentinel/attack-graph@workspace:packages/attack-graph"
+  dependencies:
+    "@sentinel/correlation-engine": "workspace:*"
+    "@sentinel/detection-engine": "workspace:*"
+    "@sentinel/event-schema": "workspace:*"
+    "@sentinel/shared": "workspace:*"
+    "@types/node": "npm:^26.4.0"
+  languageName: unknown
+  linkType: soft
+
 "@sentinel/auth@workspace:*, @sentinel/auth@workspace:packages/auth":
   version: 0.0.0-use.local
   resolution: "@sentinel/auth@workspace:packages/auth"
@@ -324,7 +336,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@sentinel/correlation-engine@workspace:packages/correlation-engine":
+"@sentinel/correlation-engine@workspace:*, @sentinel/correlation-engine@workspace:packages/correlation-engine":
   version: 0.0.0-use.local
   resolution: "@sentinel/correlation-engine@workspace:packages/correlation-engine"
   dependencies:
