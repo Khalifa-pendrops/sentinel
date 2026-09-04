@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://user:pass@localhost:5432/sentinel_ci
+      DIRECT_URL: postgresql://user:pass@localhost:5432/sentinel_ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Generate Prisma client
+        run: ./node_modules/.bin/prisma generate --schema=packages/db/prisma/schema.prisma
+
+      - name: Typecheck
+        run: ./node_modules/.bin/tsc -b apps/ingestion apps/workers
+
+      - name: Lint
+        run: yarn lint
+
+      - name: Run tests
+        run: yarn test
