@@ -13,7 +13,10 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
-    "@sentinel/auth": "workspace:*"
+    "@sentinel/auth": "workspace:*",
+    "@sentinel/correlation-engine": "workspace:*",
+    "@sentinel/detection-engine": "workspace:*",
+    "@sentinel/event-schema": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",

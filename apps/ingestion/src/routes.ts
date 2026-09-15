@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { logger } from '@sentinel/shared';
 import { hashApiKey } from '@sentinel/auth';
-import { findApiKeyByHash } from '@sentinel/db';
+import { findApiKeyByHash, saveEvent } from '@sentinel/db';
 import { isValidSentinelEvent } from './validation.js';
 
 export function registerRoutes(app: FastifyInstance): void {
@@ -22,6 +22,16 @@ export function registerRoutes(app: FastifyInstance): void {
     if (!isValidSentinelEvent(request.body)) {
       return reply.code(400).send({ error: 'invalid event payload' });
     }
+
+    if (request.body.organizationId !== keyRecord.organizationId) {
+      logger.warn('organization mismatch on event submission', {
+        claimedOrganizationId: request.body.organizationId,
+        authenticatedOrganizationId: keyRecord.organizationId,
+      });
+      return reply.code(403).send({ error: 'organization mismatch' });
+    }
+
+    await saveEvent(request.body);
 
     logger.info('event accepted', {
       eventId: request.body.id,

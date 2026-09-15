@@ -12,6 +12,7 @@
   "dependencies": {
     "@sentinel/attack-graph": "workspace:*",
     "@sentinel/correlation-engine": "workspace:*",
+    "@sentinel/db": "workspace:*",
     "@sentinel/detection-engine": "workspace:*",
     "@sentinel/event-schema": "workspace:*",
     "@sentinel/redaction": "workspace:*",
