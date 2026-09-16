@@ -6,7 +6,10 @@ export default [
   { ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts'] },
   {
     files: ['**/*.ts', '**/*.tsx'],
-    languageOptions: { parser: tsParser, parserOptions: { project: true, sourceType: 'module' } },
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: { project: true, sourceType: 'module' },
+    },
     plugins: { '@typescript-eslint': tseslint },
     rules: {
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
@@ -14,6 +17,12 @@ export default [
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-floating-promises': 'error',
       'no-console': ['warn', { allow: ['warn', 'error'] }],
+    },
+  },
+  {
+    files: ['packages/shared/src/logger.ts', 'packages/db/src/seed.ts'],
+    rules: {
+      'no-console': 'off',
     },
   },
   prettierConfig,

@@ -2,6 +2,7 @@
   "name": "sentinel",
   "version": "0.0.0",
   "private": true,
+  "type": "module",
   "packageManager": "yarn@4.5.0",
   "workspaces": [
     "apps/*",
@@ -10,6 +11,13 @@
   ],
   "engines": {
     "node": ">=20"
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -b apps/ingestion apps/workers"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
