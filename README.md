@@ -2,6 +2,72 @@
 
 Attack reconstruction platform: correlates independent application-layer and cloud-layer telemetry into evidence-graded incident narratives. Full spec: `Sentinel_Full_Product_Development_Plan.docx`.
 
+---
+
+## The Story Behind Sentinel
+
+### The Problem: The Visibility & Correlation Chasm
+Modern security incidents rarely stay confined to a single layer. An attacker might exploit an application vulnerability, escalate privileges via an authentication token, pivot to a cloud environment (e.g., generating rogue GCP service account keys), and exfiltrate data from cloud storage.
+
+Today, defending against these multi-stage attacks is painful and fragmented:
+- **Siloed Telemetry**: Application logs (APMs, web servers), identity providers, and cloud audit logs (GCP Cloud Audit Logs, AWS CloudTrail) live in separate systems with incompatible schemas.
+- **Manual, Slow Triage**: Incident responders must manually cross-reference timestamps, IP addresses, trace IDs, and user identities across disparate consoles to piece together what happened.
+- **Assumptions vs. Evidence**: Heuristics and automated tools often hallucinate or guess attack paths without providing audit-grade proof, leaving security teams uncertain about the true blast radius.
+
+### The Solution: Evidence-Graded Attack Reconstruction
+**Sentinel** solves this by establishing a unified, automated attack reconstruction pipeline. It ingests independent, heterogeneous telemetry from both the application tier (via native SDKs) and cloud providers (via cloud connectors), standardizes them into canonical event envelopes, and automatically pieces together the full incident lifecycle.
+
+---
+
+## Core Pillars & Philosophy
+
+1. **Evidence-Graded Narratives (No Guesswork)**
+   Every reconstructed step and event in Sentinel is tagged with an explicit certainty tier:
+   - `confirmed`: Supported by hard cryptographic, audit-log, or deterministic trace evidence.
+   - `suspected`: High contextual correlation without direct causal proof.
+   - `not_detected`: Actively probed or queried, with no corresponding telemetry found.
+   - `unknown`: Visibility gaps where telemetry was unavailable or unmonitored.
+
+2. **Deterministic & Pivot-Based Correlation**
+   Relationships between events are formed strictly through verifiable links:
+   - `shared_trace`: Direct distributed tracing propagation.
+   - `shared_actor`: Identity, service account, or token continuity.
+   - `shared_resource`: Target infrastructure, database, or API endpoint overlap.
+   - `time_window`: Constrained temporal proximity across coordinated actions.
+
+3. **End-to-End Reconstruction Pipeline**
+   Telemetry flows through a modular, decoupled event processing architecture:
+   ```
+   [ Application Sensor (@sentinel/sdk-node) ]    [ Cloud Connector (connectors/gcp) ]
+                           │                                      │
+                           └──────────────────┬───────────────────┘
+                                              ▼
+                                   [ apps/ingestion ]
+                              (Fastify / Validation / Auth)
+                                              │
+                                              ▼
+                                      [ Pub/Sub Queue ]
+                                              │
+                                              ▼
+                                    [ apps/workers ]
+                                              │
+                               ┌──────────────┼──────────────┐
+                               ▼              ▼              ▼
+                          [ Detection ] [ Correlation ] [ Attack Graph ]
+                            Engine         Engine          Engine
+                               └──────────────┬──────────────┘
+                                              ▼
+                                       [ packages/db ]
+                                    (PostgreSQL + Prisma)
+                                              │
+                               ┌──────────────┴──────────────┐
+                               ▼                             ▼
+                        [ apps/api ]                 [ apps/dashboard ]
+                     (GraphQL / REST API)           (Incident Timeline UI)
+   ```
+
+---
+
 ## Status: Phase 0 (scaffolding)
 
 ### Built and compiling clean (strict TypeScript, yarn workspaces)

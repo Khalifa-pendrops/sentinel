@@ -3,6 +3,7 @@ import { logger } from '@sentinel/shared';
 import { hashApiKey } from '@sentinel/auth';
 import { findApiKeyByHash, saveEvent } from '@sentinel/db';
 import { isValidSentinelEvent } from './validation.js';
+import { publishEvent } from './publisher.js';
 
 export function registerRoutes(app: FastifyInstance): void {
   app.post('/v1/events', async (request, reply) => {
@@ -32,6 +33,7 @@ export function registerRoutes(app: FastifyInstance): void {
     }
 
     await saveEvent(request.body);
+    await publishEvent(request.body);
 
     logger.info('event accepted', {
       eventId: request.body.id,

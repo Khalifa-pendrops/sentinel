@@ -1,6 +1,10 @@
+import { PubSub, type Message } from '@google-cloud/pubsub';
 import type { SentinelEvent } from '@sentinel/event-schema';
 import { logger } from '@sentinel/shared';
 import { runPipeline } from './pipeline.js';
+
+const pubsub = new PubSub({ projectId: process.env['GCP_PROJECT_ID'] ?? 'sentinel-dev' });
+const subscriptionName = process.env['PUBSUB_SUBSCRIPTION'] ?? 'sentinel-workers-dev';
 
 export async function handleEventBatch(events: SentinelEvent[]): Promise<void> {
   if (events.length === 0) {
@@ -14,10 +18,27 @@ export async function handleEventBatch(events: SentinelEvent[]): Promise<void> {
   });
 }
 
-// TODO(pubsub-wiring): once a real subscription is wired here, the message
-// handler MUST await handleEventBatch(...) before acking the Pub/Sub message.
-// Acking before this resolves means a DB failure silently drops the event
-// instead of triggering Pub/Sub redelivery.
+async function handleMessage(message: Message): Promise<void> {
+  try {
+    const event = JSON.parse(message.data.toString('utf8')) as SentinelEvent;
+    await handleEventBatch([event]);
+    message.ack();
+  } catch (error: unknown) {
+    logger.error('failed to process message, will retry', {
+      messageId: message.id,
+      error: String(error),
+    });
+    message.nack();
+  }
+}
+
 export function startConsumer(): void {
-  logger.info('worker consumer started (Pub/Sub subscription not yet wired - see infra/terraform)');
+  const subscription = pubsub.subscription(subscriptionName);
+  subscription.on('message', (message: Message) => {
+    void handleMessage(message);
+  });
+  subscription.on('error', (error: unknown) => {
+    logger.error('subscription error', { error: String(error) });
+  });
+  logger.info('worker consumer started', { subscriptionName });
 }

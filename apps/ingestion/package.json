@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google-cloud/pubsub": "^4.9.0",
     "@sentinel/auth": "workspace:*",
     "@sentinel/db": "workspace:*",
     "@sentinel/event-schema": "workspace:*",
