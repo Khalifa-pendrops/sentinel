@@ -148,3 +148,5 @@ Requires `.env` (and copies in `apps/ingestion/.env`, `apps/workers/.env`, `pack
 
 - **On Windows, Prisma's `generate` step fails with `EPERM: operation not permitted, rename ... query_engine-windows.dll.node.tmp...`** whenever any running Node process (an app using `@prisma/client`, or `prisma studio`) still has the current engine DLL loaded — Windows won't let it be overwritten while in use. Stop every running `apps/*` service (and Prisma Studio, if open) before rebuilding `packages/db`.
 
+- **Pub/Sub emulator state is entirely in-memory** — restarting Docker Desktop (or the container) wipes all topics/subscriptions, and any events published while it's down fail loudly (a real Fastify 500, not silent data loss) rather than silently succeeding. Recreate the topic/subscription (see Pub/Sub emulator section above) after any Docker restart.
+
