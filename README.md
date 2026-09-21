@@ -68,7 +68,7 @@ Today, defending against these multi-stage attacks is painful and fragmented:
 
 ---
 
-## Status: Phase 0 (scaffolding)
+## Status: Phase 0 (Foundation) and Phase 1 (Event Pipeline) complete
 
 ### Built and compiling clean (strict TypeScript, yarn workspaces)
 
@@ -77,30 +77,33 @@ Today, defending against these multi-stage attacks is painful and fragmented:
 - **`packages/auth`** — API-key hashing + timing-safe verification
 - **`packages/sdk-node`** — application-side sensor stub (`Sentinel.init()`, `.securityEvent()`, `.authorization()`); queues events, no delivery wired yet
 - **`connectors/gcp`** — cloud-side sensor stub (audit log / IAM / API-key listeners); no real GCP API calls wired yet
-- **`packages/db`** — Prisma/Postgres (Supabase) persistence: organizations, hashed API keys, events, detections (via `DetectionEvent` join table for multi-event support), incidents
-- **`apps/ingestion`** — Fastify service: validate → authenticate → cross-check organization → persist → publish (`POST /v1/events`); auth is real, DB-backed API-key lookup, cross-checked against the authenticated key's actual organization (never trusts client-supplied org ID)
+- **`packages/db`** — Prisma/Postgres (Supabase) persistence: organizations, hashed API keys, events (idempotent on duplicate id), detections (via `DetectionEvent` join table for multi-event support), incidents, paginated `listEvents` query
+- **`apps/ingestion`** — Fastify service: validate → authenticate → cross-check organization → persist (idempotently) → publish to queue (`POST /v1/events`); auth is real, DB-backed API-key lookup, cross-checked against the authenticated key's actual organization (never trusts client-supplied org ID)
 - **`packages/detection-engine`** — deterministic rule matching only (one example rule: unexpected API key creation); baseline and sequence detection not implemented, need historical data first
 - **`packages/correlation-engine`** — links detections via `shared_trace`, `shared_actor`, `shared_resource`, and `time_window` (5-minute placeholder window); evidence-driven only, never assumed
+- **`packages/attack-graph`** — builds detection/actor/resource nodes with evidence-labeled edges from correlated incidents
+- **`packages/redaction`** — recursive key-pattern redaction applied to event payloads before persistence
 - **`apps/workers`** — real Pub/Sub subscriber (Google's local emulator for dev); runs redact → detect → correlate → attack-graph pipeline per message, acks only after successful persistence, nacks (triggering redelivery) on failure; guards against mixed-organization batches
+- **`apps/api`** — Fastify service: `GET /v1/events`, paginated and scoped to the authenticated key's organization; CORS is permissive in dev, strict (requires `ALLOWED_ORIGINS`) in production, refuses to start without it
+- **`apps/dashboard`** — Next.js Event Explorer page; fetches server-side (React Server Component) so the API key never reaches the browser, sidestepping CORS entirely for this page; visually minimal by design — the doc's real "Dashboard UX" spec (section 32: severity, incidents, risky identities) is a later phase, this is just the Phase 1 raw-event browser
 - **Queue** — real Google Cloud Pub/Sub client, running against the local emulator for dev; verified end-to-end (publish → subscribe → ack) against live Supabase data, including the multi-event join table
+- **Docker** — `infra/docker` Dockerfiles for `ingestion` and `workers`, built and verified working against live Supabase
+- **CI** — `.github/workflows/ci.yml` written and verified passing every check locally (lint, typecheck, test); blocked from actually running by a GitHub account billing lock, unrelated to the project (see gaps below)
 
 ### Scaffolded, empty
 
-- `apps/api`, `apps/dashboard`, `apps/workers` (`src/` created, no source yet)
-- `infra/terraform`, `infra/docker`
-- `docs/architecture`, `docs/security`, `docs/api`, `docs/runbooks`
-- `tests/unit`, `tests/integration`, `tests/e2e`, `tests/security`, `tests/fixtures`
+- `infra/terraform` — Cloud Run, Pub/Sub, Secret Manager resources defined, deliberately **unapplied** (no personal GCP project — the available GCP project belongs to an employer and won't be used for this)
+- `tests/unit`, `tests/integration`, `tests/e2e`, `tests/security`, `tests/fixtures` — no tests written yet; `yarn test` passes via `--passWithNoTests`, which is honest but not the same as coverage
 
 ## Known gaps / next up
 
-- **`apps/workers`** — consume Pub/Sub, run detection → correlation → attack graph pipeline in sequence
-- **`packages/attack-graph`** — not started
-- **`packages/redaction`** — not started
-- **Postgres + Prisma** — no schema yet, so no real API-key storage (ingestion auth is unusable end-to-end until this exists), no baseline detection possible either
-- **`apps/ingestion`** — wire actual Pub/Sub publish instead of just accepting and logging
-- **`infra/terraform`** — no resources defined yet (Cloud Run, Pub/Sub, Cloud SQL, Secret Manager per doc section 27)
-- **CI workflow** (`.github/workflows/ci.yml`) — not created
+- **CI workflow** — written and correct, verified passing locally, but blocked from running by a GitHub account-level "payment authorization failed" lock (known, widely-reported GitHub Free-tier issue, unrelated to this project). Support ticket filed, pending resolution.
+- **Real GCP infra** — Terraform defined but unapplied; Pub/Sub is currently only the local emulator, not real Cloud Pub/Sub; `connectors/gcp` listeners are stubs with no real API calls
+- **No automated tests** — zero test files exist; everything verified so far has been manual, step-by-step end-to-end testing
+- **`packages/detection-engine`** — only one deterministic rule exists; baseline anomaly detection and sequence detection are unimplemented, need real historical data first
 - **Correlation time window** — 5-minute constant in `correlation-engine` is a placeholder, needs tuning against real incident data
+- **Dashboard styling** — intentionally plain; real visual design work belongs to the later "Dashboard UX" phase (doc section 32) when the full incident dashboard (not just raw events) gets built
+- **Pub/Sub emulator state is ephemeral** — restarting Docker wipes topics/subscriptions; must be recreated after every restart (see Dev setup below)
 
 ## Dev setup
 
@@ -112,6 +115,11 @@ yarn workspace @sentinel/<package-name> run build
 
 Node >= 20, Yarn 4.5.0 (pinned via `packageManager`). Uses the `node-modules` linker (see `.yarnrc.yml`), not PnP — PnP broke TypeScript's `types` resolution for `@types/node`.
 
+### Environment files
+
+Root `.env` (copy from `.env.example`) needs: `DATABASE_URL` (Supabase transaction pooler, port 6543, `?pgbouncer=true`), `DIRECT_URL` (Supabase **session** pooler, port 5432 — not the direct `db.*.supabase.co` host, which is IPv6-only and usually unreachable), `SENTINEL_INGESTION_API_KEY_SALT` (a real random value), `PUBSUB_EMULATOR_HOST=localhost:8085`, `GCP_PROJECT_ID=sentinel-dev`.
+
+This `.env` must be **copied into each workspace that reads it at runtime or build time** — `packages/db`, `apps/ingestion`, `apps/workers`, `apps/api` — since Yarn workspace commands change the working directory and neither Prisma nor plain `process.env` picks up a root-level `.env` automatically. `apps/dashboard` uses its own `.env.local` (Next.js convention) with `SENTINEL_API_URL` and `SENTINEL_API_KEY`.
 
 ### Pub/Sub emulator (required for apps/ingestion and apps/workers)
 
@@ -122,31 +130,33 @@ curl.exe -X PUT "http://localhost:8085/v1/projects/sentinel-dev/topics/sentinel-
 curl.exe -v -X PUT -H "Content-Type: application/json" --data-raw '{\"topic\": \"projects/sentinel-dev/topics/sentinel-events-dev\"}' "http://localhost:8085/v1/projects/sentinel-dev/subscriptions/sentinel-workers-dev"
 ```
 
-Requires `.env` (and copies in `apps/ingestion/.env`, `apps/workers/.env`, `packages/db/.env`) to include `PUBSUB_EMULATOR_HOST=localhost:8085` and `GCP_PROJECT_ID=sentinel-dev` — without these, the Pub/Sub client tries to reach real GCP instead of the local emulator.
+### Generating a dev API key
 
+```powershell
+yarn workspace @sentinel/db run seed
+```
+
+Prints a new Organization id and a raw API key — **the raw key is shown once and never stored**; if lost, just run `seed` again for a fresh pair.
 
 ## Observations / gotchas encountered
 
 - **BOM breaks JSON**: `Set-Content -Encoding utf8` in PowerShell prepends a byte-order-mark, which Node's JSON parser can't handle. Use `[System.IO.File]::WriteAllText(...)` instead (no BOM by default).
-- **Yarn PnP breaks `@types/node` resolution**: TypeScript's `"types": [...]` compiler option can't resolve packages through Yarn's virtual PnP filesystem. Fixed by setting `nodeLinker: node-modules` in `.yarnrc.yml` — trades a heavier repo on disk for tooling that actually works.
-- **Yarn PnP is per-package strict**: a workspace package can only resolve dependencies declared in *its own* `package.json`, not anything hoisted from the root. Every package needing `@types/node`, `fastify`, etc. must declare it directly.
-- **New workspace packages need `yarn install` before `yarn workspace <name> run <script>` works** — otherwise Yarn throws `Package for ... not found in the project`, even if the folder and `package.json` both exist.
-- **`noPropertyAccessFromIndexSignature` (strict mode) requires bracket notation** on `process.env.X` and any `Record<string, unknown>` field access — `.env.PORT` fails, `.env['PORT']` is required.
-- **New `apps/*` and `packages/*` directories need an explicit `src/` subfolder** — the initial folder-scaffolding step didn't create `src/` under `apps/*`, only under `packages/*`, which caused `WriteAllText` to fail with `DirectoryNotFoundException` until `New-Item -ItemType Directory` was run first.
-- **PowerShell backtick-escaping doesn't nest**: writing a literal `` `${...}` `` template-literal syntax into a `.ts` file via a double-quoted PowerShell string collapses instead of producing real backticks — safer to rewrite the source using string concatenation (`+`) instead of template literals when generating files this way.
-- **Watch for stray parentheses when hand-writing array literals as file content** — `patterns.ts` was initially written with a trailing `]);` instead of `];` (a copy-paste artifact from writing it like a function call), which is a genuine syntax bug, not a PowerShell escaping issue.
-- **Supabase direct connection is IPv6-only**: `db.<ref>.supabase.co` (port 5432) isn't reachable from most IPv4-only networks, causing Prisma migrations to fail with `P1001`. Use the **Session pooler** connection string (same port 5432, different host `<region>.pooler.supabase.com`, username suffixed with the project ref) as `DIRECT_URL` instead. `DATABASE_URL` should still use the **Transaction pooler** (port 6543) for app runtime queries.
-- **Prisma env files are workspace-scoped, not root-scoped**: running `yarn workspace @sentinel/db run <script>` changes CWD to `packages/db`, so Prisma looks for `.env` there — a root-level `.env` isn't picked up automatically and needs to be copied into the package folder too.
-- **PowerShell double-quoted strings interpolate `$` as variables**: writing literal JS/TS code containing `$` (e.g. `prisma.$disconnect()`) into a file via `WriteAllText` with a double-quoted outer string silently expands `$disconnect` as an (undefined, empty) PowerShell variable, corrupting the output to `prisma.()`. Escape any literal `$` in generated code with a backtick (`` `$ ``).
-
-- **`yarn workspace <name> run <script>` (and even plain `yarn run` from inside a workspace dir) fails to inject the root `node_modules/.bin` into PATH under Docker**, specifically with Corepack-fetched Yarn 4.5.0 + the `node-modules` linker on `node:20-slim` — reproducibly gives `command not found: tsc` even though the binary and workspace registration are both correct (confirmed via `yarn workspaces list` and direct invocation of `../../node_modules/.bin/tsc`). Root cause not fully isolated; workaround is to bypass Yarn's script runner entirely in Docker builds and invoke `tsc -b` directly via its root-relative path against one leaf project — TypeScript's project-reference build mode (`tsc -b`) automatically walks the full dependency graph from there, so one line replaces what would otherwise be one `RUN` per package.
-- **Prisma can't auto-detect OpenSSL on `node:20-slim`**, silently defaulting to a guessed version (`openssl-1.1.x`) that may not match what's actually installed — a real risk for TLS connections to Supabase, not just a cosmetic warning. Fixed by explicitly `apt-get install -y openssl` before `yarn install` in the Dockerfile.
-- **`docker build ... 2>&1 | Out-String` in PowerShell can throw a spurious top-level `NativeCommandError`** even when the build itself succeeds — check the actual BuildKit step output (`#N DONE`) rather than trusting PowerShell's own error framing.
-- **CI workflow** (`.github/workflows/ci.yml`) — written and correct (verified all steps pass locally: install, prisma generate, typecheck, lint, test), but **blocked from actually running** by a GitHub account-level billing lock ("payment authorization failed") unrelated to this project — a known, widely-reported GitHub Free-tier issue, ticket filed with GitHub Support, pending resolution.
-
-- **CORS defaults to permissive in dev, strict in production**: `apps/api`'s CORS origin is `true` (reflects any origin) unless `NODE_ENV=production`, in which case it requires `ALLOWED_ORIGINS` (comma-separated) to be set and will refuse to start without it — never falls back to open CORS in production. Set `ALLOWED_ORIGINS` before deploying `apps/api` anywhere real.
-
-- **On Windows, Prisma's `generate` step fails with `EPERM: operation not permitted, rename ... query_engine-windows.dll.node.tmp...`** whenever any running Node process (an app using `@prisma/client`, or `prisma studio`) still has the current engine DLL loaded — Windows won't let it be overwritten while in use. Stop every running `apps/*` service (and Prisma Studio, if open) before rebuilding `packages/db`.
-
-- **Pub/Sub emulator state is entirely in-memory** — restarting Docker Desktop (or the container) wipes all topics/subscriptions, and any events published while it's down fail loudly (a real Fastify 500, not silent data loss) rather than silently succeeding. Recreate the topic/subscription (see Pub/Sub emulator section above) after any Docker restart.
+- **Yarn PnP breaks `@types/node` resolution**: TypeScript's `"types": [...]` compiler option can't resolve packages through Yarn's virtual PnP filesystem. Fixed by setting `nodeLinker: node-modules` in `.yarnrc.yml`.
+- **Yarn PnP is per-package strict**: a workspace package can only resolve dependencies declared in *its own* `package.json`, not anything hoisted from the root.
+- **New workspace packages need `yarn install` before `yarn workspace <name> run <script>` works** — otherwise Yarn throws `Package for ... not found in the project`.
+- **`noPropertyAccessFromIndexSignature` (strict mode) requires bracket notation** on `process.env.X` and any `Record<string, unknown>` field access.
+- **New `apps/*` and `packages/*` directories need an explicit `src/` subfolder** created manually — several were missed during initial scaffolding and caused `DirectoryNotFoundException` on first file write.
+- **PowerShell backtick-escaping doesn't nest**: writing a literal `` `${...}` `` template-literal syntax into a `.ts` file via a double-quoted PowerShell string collapses instead of producing real backticks — use string concatenation (`+`) instead when generating files this way.
+- **PowerShell double-quoted strings interpolate `$` as variables**: writing literal code containing `$` (e.g. `prisma.$disconnect()`) via a double-quoted `WriteAllText` string silently corrupts it. Escape with a backtick (`` `$ ``).
+- **Supabase direct connection is IPv6-only**: `db.<ref>.supabase.co` (port 5432) isn't reachable from most IPv4-only networks. Use the **Session pooler** connection string as `DIRECT_URL` instead.
+- **Prisma env files are workspace-scoped, not root-scoped**: `yarn workspace <name> run <script>` changes CWD, so a root `.env` isn't picked up automatically.
+- **`yarn workspace <name> run <script>` (and even plain `yarn run` inside a workspace dir) can fail to inject `node_modules/.bin` into PATH under Docker** with Corepack-fetched Yarn 4.5.0 + `node-modules` linker on `node:20-slim` — gives `command not found: tsc` even though the binary and workspace registration are correct. Workaround: bypass Yarn's script runner in Docker builds and invoke `tsc -b` directly via its root-relative path against one leaf project (TypeScript's project-reference build mode walks the full dependency graph automatically).
+- **Prisma can't auto-detect OpenSSL on `node:20-slim`**, silently defaulting to a guessed version — a real TLS risk, not cosmetic. Fixed with explicit `apt-get install -y openssl` before `yarn install` in the Dockerfile.
+- **`docker build ... | Out-String` in PowerShell can throw a spurious top-level error** even when the build succeeds — check the actual BuildKit step output, not PowerShell's error framing.
+- **On Windows, Prisma's `generate` fails with `EPERM: ... rename ... query_engine-windows.dll.node.tmp...`** whenever any running Node process (an app using `@prisma/client`, or Prisma Studio) still has the engine DLL loaded. Stop every running `apps/*` service before rebuilding `packages/db`.
+- **Vitest exits with code 1 on "no test files found" by default** — use `--passWithNoTests` until real tests exist, or CI fails for a reason unrelated to actual code health.
+- **`yarn workspaces foreach -Apt run test` fails if even one workspace lacks a `test` script** — safer to define root-level scripts directly (e.g. a single `vitest run`) until every package has its own.
+- **Pub/Sub emulator state is entirely in-memory** — restarting Docker Desktop (or the container) wipes all topics/subscriptions; recreate them after every restart.
+- **`saveEvent` must be idempotent**: a client retry after a partial failure (e.g. the DB write succeeds but the subsequent Pub/Sub publish times out and the request returns a 500) will resubmit the same event id. Without idempotency handling, this throws a Prisma unique-constraint error (`P2002`) instead of succeeding safely on retry.
+- **CORS must be environment-aware, not just permissive**: `apps/api` allows any origin in dev but requires an explicit `ALLOWED_ORIGINS` allowlist in production, refusing to start without it rather than silently falling back to an open policy.
 
