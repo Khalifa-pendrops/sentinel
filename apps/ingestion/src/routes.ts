@@ -32,7 +32,13 @@ export function registerRoutes(app: FastifyInstance): void {
       return reply.code(403).send({ error: 'organization mismatch' });
     }
 
-    await saveEvent(request.body);
+    const { created } = await saveEvent(request.body);
+
+    if (!created) {
+      logger.info('duplicate event ignored', { eventId: request.body.id });
+      return reply.code(202).send({ accepted: true, duplicate: true });
+    }
+
     await publishEvent(request.body);
 
     logger.info('event accepted', {

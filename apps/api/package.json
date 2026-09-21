@@ -1,0 +1,23 @@
+{
+  "name": "@sentinel/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node --env-file=.env dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.1",
+    "@sentinel/auth": "workspace:*",
+    "@sentinel/db": "workspace:*",
+    "@sentinel/event-schema": "workspace:*",
+    "@sentinel/shared": "workspace:*",
+    "fastify": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0"
+  }
+}

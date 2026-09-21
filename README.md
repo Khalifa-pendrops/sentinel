@@ -77,9 +77,12 @@ Today, defending against these multi-stage attacks is painful and fragmented:
 - **`packages/auth`** — API-key hashing + timing-safe verification
 - **`packages/sdk-node`** — application-side sensor stub (`Sentinel.init()`, `.securityEvent()`, `.authorization()`); queues events, no delivery wired yet
 - **`connectors/gcp`** — cloud-side sensor stub (audit log / IAM / API-key listeners); no real GCP API calls wired yet
-- **`apps/ingestion`** — Fastify service: validate → authenticate → accept (`POST /v1/events`); auth checked against env-var placeholder, no Pub/Sub publish yet
+- **`packages/db`** — Prisma/Postgres (Supabase) persistence: organizations, hashed API keys, events, detections (via `DetectionEvent` join table for multi-event support), incidents
+- **`apps/ingestion`** — Fastify service: validate → authenticate → cross-check organization → persist → publish (`POST /v1/events`); auth is real, DB-backed API-key lookup, cross-checked against the authenticated key's actual organization (never trusts client-supplied org ID)
 - **`packages/detection-engine`** — deterministic rule matching only (one example rule: unexpected API key creation); baseline and sequence detection not implemented, need historical data first
 - **`packages/correlation-engine`** — links detections via `shared_trace`, `shared_actor`, `shared_resource`, and `time_window` (5-minute placeholder window); evidence-driven only, never assumed
+- **`apps/workers`** — real Pub/Sub subscriber (Google's local emulator for dev); runs redact → detect → correlate → attack-graph pipeline per message, acks only after successful persistence, nacks (triggering redelivery) on failure; guards against mixed-organization batches
+- **Queue** — real Google Cloud Pub/Sub client, running against the local emulator for dev; verified end-to-end (publish → subscribe → ack) against live Supabase data, including the multi-event join table
 
 ### Scaffolded, empty
 
@@ -110,6 +113,17 @@ yarn workspace @sentinel/<package-name> run build
 Node >= 20, Yarn 4.5.0 (pinned via `packageManager`). Uses the `node-modules` linker (see `.yarnrc.yml`), not PnP — PnP broke TypeScript's `types` resolution for `@types/node`.
 
 
+### Pub/Sub emulator (required for apps/ingestion and apps/workers)
+
+```powershell
+docker run -d --name sentinel-pubsub -p 8085:8085 google/cloud-sdk:latest gcloud beta emulators pubsub start --host-port=0.0.0.0:8085 --project=sentinel-dev
+
+curl.exe -X PUT "http://localhost:8085/v1/projects/sentinel-dev/topics/sentinel-events-dev"
+curl.exe -v -X PUT -H "Content-Type: application/json" --data-raw '{\"topic\": \"projects/sentinel-dev/topics/sentinel-events-dev\"}' "http://localhost:8085/v1/projects/sentinel-dev/subscriptions/sentinel-workers-dev"
+```
+
+Requires `.env` (and copies in `apps/ingestion/.env`, `apps/workers/.env`, `packages/db/.env`) to include `PUBSUB_EMULATOR_HOST=localhost:8085` and `GCP_PROJECT_ID=sentinel-dev` — without these, the Pub/Sub client tries to reach real GCP instead of the local emulator.
+
 
 ## Observations / gotchas encountered
 
@@ -129,3 +143,8 @@ Node >= 20, Yarn 4.5.0 (pinned via `packageManager`). Uses the `node-modules` li
 - **Prisma can't auto-detect OpenSSL on `node:20-slim`**, silently defaulting to a guessed version (`openssl-1.1.x`) that may not match what's actually installed — a real risk for TLS connections to Supabase, not just a cosmetic warning. Fixed by explicitly `apt-get install -y openssl` before `yarn install` in the Dockerfile.
 - **`docker build ... 2>&1 | Out-String` in PowerShell can throw a spurious top-level `NativeCommandError`** even when the build itself succeeds — check the actual BuildKit step output (`#N DONE`) rather than trusting PowerShell's own error framing.
 - **CI workflow** (`.github/workflows/ci.yml`) — written and correct (verified all steps pass locally: install, prisma generate, typecheck, lint, test), but **blocked from actually running** by a GitHub account-level billing lock ("payment authorization failed") unrelated to this project — a known, widely-reported GitHub Free-tier issue, ticket filed with GitHub Support, pending resolution.
+
+- **CORS defaults to permissive in dev, strict in production**: `apps/api`'s CORS origin is `true` (reflects any origin) unless `NODE_ENV=production`, in which case it requires `ALLOWED_ORIGINS` (comma-separated) to be set and will refuse to start without it — never falls back to open CORS in production. Set `ALLOWED_ORIGINS` before deploying `apps/api` anywhere real.
+
+- **On Windows, Prisma's `generate` step fails with `EPERM: operation not permitted, rename ... query_engine-windows.dll.node.tmp...`** whenever any running Node process (an app using `@prisma/client`, or `prisma studio`) still has the current engine DLL loaded — Windows won't let it be overwritten while in use. Stop every running `apps/*` service (and Prisma Studio, if open) before rebuilding `packages/db`.
+
