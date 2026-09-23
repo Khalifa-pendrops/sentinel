@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { generateId, logger } from '@sentinel/shared';
 import type { SentinelEvent, OutcomeStatus } from '@sentinel/event-schema';
 import type {
@@ -14,11 +15,17 @@ const DEFAULT_BATCH_SIZE = 20;
 const DEFAULT_FLUSH_INTERVAL_MS = 5000;
 const DEFAULT_MAX_RETRIES = 3;
 
+interface FastifyRequestState {
+  start: number;
+  requestId: string;
+}
+
 export class SentinelClient {
   private readonly config: SentinelConfig;
   private readonly queue: SentinelEvent[] = [];
   private readonly batchSize: number;
   private readonly timer: NodeJS.Timeout;
+  private readonly fastifyRequestState = new WeakMap<FastifyRequest, FastifyRequestState>();
 
   constructor(config: SentinelConfig) {
     this.config = config;
@@ -50,6 +57,36 @@ export class SentinelClient {
       });
 
       next();
+    };
+  }
+
+  fastifyPlugin(): (app: FastifyInstance) => void {
+    return (app: FastifyInstance): void => {
+      app.addHook('onRequest', (request, _reply, done) => {
+        this.fastifyRequestState.set(request, { start: Date.now(), requestId: generateId('req') });
+        done();
+      });
+
+      app.addHook('onResponse', (request: FastifyRequest, reply: FastifyReply, done) => {
+        const state = this.fastifyRequestState.get(request);
+        const durationMs = state !== undefined ? Date.now() - state.start : 0;
+        const requestId = state !== undefined ? state.requestId : generateId('req');
+        const userAgentRaw = request.headers['user-agent'];
+        const userAgent = Array.isArray(userAgentRaw) ? userAgentRaw[0] : userAgentRaw;
+
+        this.captureHttpEvent({
+          method: request.method,
+          path: request.url,
+          statusCode: reply.statusCode,
+          durationMs,
+          requestId,
+          ...(request.ip !== undefined ? { sourceIp: request.ip } : {}),
+          ...(userAgent !== undefined ? { userAgent } : {}),
+        });
+
+        this.fastifyRequestState.delete(request);
+        done();
+      });
     };
   }
 
