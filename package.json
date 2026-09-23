@@ -7,7 +7,8 @@
   "workspaces": [
     "apps/*",
     "packages/*",
-    "connectors/*"
+    "connectors/*",
+    "examples/*"
   ],
   "engines": {
     "node": ">=20"
