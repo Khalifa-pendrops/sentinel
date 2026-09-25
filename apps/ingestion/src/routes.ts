@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { logger } from '@sentinel/shared';
 import { hashApiKey } from '@sentinel/auth';
 import { findApiKeyByHash, saveEvent } from '@sentinel/db';
+import { redactEvent } from '@sentinel/redaction';
 import { isValidSentinelEvent } from './validation.js';
 import { publishEvent } from './publisher.js';
 
@@ -32,16 +33,17 @@ async function processEvent(rawEvent: unknown, organizationId: string): Promise<
     return { id: rawEvent.id, status: 'organization_mismatch' };
   }
 
-  const { created } = await saveEvent(rawEvent);
+  const redactedEvent = redactEvent(rawEvent);
+  const { created } = await saveEvent(redactedEvent);
 
   if (!created) {
-    logger.info('duplicate event ignored', { eventId: rawEvent.id });
-    return { id: rawEvent.id, status: 'duplicate' };
+    logger.info('duplicate event ignored', { eventId: redactedEvent.id });
+    return { id: redactedEvent.id, status: 'duplicate' };
   }
 
-  await publishEvent(rawEvent);
-  logger.info('event accepted', { eventId: rawEvent.id, organizationId });
-  return { id: rawEvent.id, status: 'accepted' };
+  await publishEvent(redactedEvent);
+  logger.info('event accepted', { eventId: redactedEvent.id, organizationId });
+  return { id: redactedEvent.id, status: 'accepted' };
 }
 
 export function registerRoutes(app: FastifyInstance): void {

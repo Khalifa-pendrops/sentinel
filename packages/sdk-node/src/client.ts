@@ -2,10 +2,12 @@ import type { Request, Response, NextFunction } from 'express';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { generateId, logger } from '@sentinel/shared';
 import type { SentinelEvent, OutcomeStatus } from '@sentinel/event-schema';
+import { redactEvent } from '@sentinel/redaction';
 import type {
   SentinelConfig,
   SecurityEventInput,
   AuthorizationEventInput,
+  AuthenticationEventInput,
   HttpEventInput,
 } from './types.js';
 import { deliverBatch } from './delivery.js';
@@ -120,6 +122,21 @@ export class SentinelClient {
     });
   }
 
+  authenticationEvent(input: AuthenticationEventInput): void {
+    this.enqueue({
+      id: generateId('evt'),
+      organizationId: this.config.organizationId,
+      timestamp: new Date().toISOString(),
+      ingestionTimestamp: new Date().toISOString(),
+      source: { type: 'application', integrationId: this.config.applicationId },
+      action: { type: input.action, category: 'authentication' },
+      outcome: { status: input.outcome },
+      confidence: 1,
+      payload: input.method !== undefined ? { method: input.method } : {},
+      ...(input.actorId !== undefined ? { actor: { type: 'user', id: input.actorId } } : {}),
+    });
+  }
+
   async flush(): Promise<void> {
     if (this.queue.length === 0) {
       return;
@@ -164,8 +181,9 @@ export class SentinelClient {
   }
 
   private enqueue(event: SentinelEvent): void {
-    this.queue.push(event);
-    logger.debug('event queued', { eventId: event.id, action: event.action.type });
+    const redacted = redactEvent(event);
+    this.queue.push(redacted);
+    logger.debug('event queued', { eventId: redacted.id, action: redacted.action.type });
 
     if (this.queue.length >= this.batchSize) {
       void this.flush();

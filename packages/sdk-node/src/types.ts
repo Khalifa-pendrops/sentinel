@@ -25,6 +25,15 @@ export interface AuthorizationEventInput {
   decision: 'allowed' | 'denied';
 }
 
+export type AuthenticationAction = 'login' | 'logout' | 'session_created' | 'session_expired';
+
+export interface AuthenticationEventInput {
+  action: AuthenticationAction;
+  outcome: OutcomeStatus;
+  actorId?: string;
+  method?: string;
+}
+
 export interface HttpEventInput {
   method: string;
   path: string;
