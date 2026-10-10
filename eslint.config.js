@@ -3,7 +3,7 @@ import tsParser from '@typescript-eslint/parser';
 import prettierConfig from 'eslint-config-prettier';
 
 export default [
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/*.d.ts'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/.next/**', '**/*.d.ts'] },
   {
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
@@ -20,7 +20,7 @@ export default [
     },
   },
   {
-    files: ['packages/shared/src/logger.ts', 'packages/db/src/seed.ts'],
+    files: ['packages/shared/src/logger.ts', 'packages/db/src/seed.ts', 'examples/*/src/**/*.ts'],
     rules: {
       'no-console': 'off',
     },

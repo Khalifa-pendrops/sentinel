@@ -63,19 +63,19 @@ Today, defending against these multi-stage attacks is painful and fragmented:
                                ┌──────────────┴──────────────┐
                                ▼                             ▼
                         [ apps/api ]                 [ apps/dashboard ]
-                     (GraphQL / REST API)           (Incident Timeline UI)
+                        (REST API)                  (Event Explorer UI)
    ```
 
 ---
 
-## Status: Phase 0 (Foundation) and Phase 1 (Event Pipeline) complete
+## Status: Phase 0 (Foundation), Phase 1 (Event Pipeline), and Phase 2 (SDK) complete
 
 ### Built and compiling clean (strict TypeScript, yarn workspaces)
 
 - **`packages/event-schema`** — canonical `SentinelEvent` type, evidence-tier enum (`confirmed` / `suspected` / `not_detected` / `unknown`)
 - **`packages/shared`** — ID generation, structured JSON logger
 - **`packages/auth`** — API-key hashing + timing-safe verification
-- **`packages/sdk-node`** — application-side sensor stub (`Sentinel.init()`, `.securityEvent()`, `.authorization()`); queues events, no delivery wired yet
+- **`packages/sdk-node`** — full application-side sensor: `expressMiddleware()` and `fastifyPlugin()` for HTTP instrumentation, `.authenticationEvent()`, `.authorization()`, `.securityEvent()` for manual capture, timer + size-triggered batching, retry delivery with exponential backoff (network/5xx retryable, 4xx fails fast), client-side redaction at enqueue time (defense-in-depth alongside server-side redaction)
 - **`connectors/gcp`** — cloud-side sensor stub (audit log / IAM / API-key listeners); no real GCP API calls wired yet
 - **`packages/db`** — Prisma/Postgres (Supabase) persistence: organizations, hashed API keys, events (idempotent on duplicate id), detections (via `DetectionEvent` join table for multi-event support), incidents, paginated `listEvents` query
 - **`apps/ingestion`** — Fastify service: validate → authenticate → cross-check organization → persist (idempotently) → publish to queue (`POST /v1/events`); auth is real, DB-backed API-key lookup, cross-checked against the authenticated key's actual organization (never trusts client-supplied org ID)
@@ -89,6 +89,7 @@ Today, defending against these multi-stage attacks is painful and fragmented:
 - **Queue** — real Google Cloud Pub/Sub client, running against the local emulator for dev; verified end-to-end (publish → subscribe → ack) against live Supabase data, including the multi-event join table
 - **Docker** — `infra/docker` Dockerfiles for `ingestion` and `workers`, built and verified working against live Supabase
 - **CI** — `.github/workflows/ci.yml` written and verified passing every check locally (lint, typecheck, test); blocked from actually running by a GitHub account billing lock, unrelated to the project (see gaps below)
+- **`examples/express-demo`, `examples/fastify-demo`** — real consuming apps used to verify the SDK against actual HTTP traffic end-to-end (not just synthetic test payloads), confirmed working through to the dashboard
 
 ### Scaffolded, empty
 
@@ -98,6 +99,7 @@ Today, defending against these multi-stage attacks is painful and fragmented:
 ## Known gaps / next up
 
 - **CI workflow** — written and correct, verified passing locally, but blocked from running by a GitHub account-level "payment authorization failed" lock (known, widely-reported GitHub Free-tier issue, unrelated to this project). Support ticket filed, pending resolution.
+- **Phase 3 (GCP connector)** — unblocked via a workaround, not a fix. The personal-billing route failed with error `OR_BACR2_59` ("Billing setup can't be completed"), a known, unresolved Google-side bug affecting multiple unrelated developers (different countries, different payment methods). Decision: use a **brand-new, empty throwaway GCP project (`testbox-3cc16`, Blaze plan) created by the CTO at MyCyberClinics** on their billing account, with this account added as a member, instead of waiting on Google or switching clouds. The first project offered (`rootedwebsite`) was a live production Firebase backend with real traffic and was declined: testing detection there would mix deliberate test events into real production noise and put a live system at risk. Billing stays the CTO's responsibility, so a budget alert on that project is a standing requirement. `connectors/gcp` is still stubbed until the connector work in Phase 3 begins. Deliberately **not** switching cloud providers to route around the billing bug: the doc's MVP scope (section 35: "Do not support AWS, Azure, and GCP simultaneously") and the project's origin story (the real MyCyberClinics incident was GCP-specific) both argue for staying on GCP.
 - **Real GCP infra** — Terraform defined but unapplied; Pub/Sub is currently only the local emulator, not real Cloud Pub/Sub; `connectors/gcp` listeners are stubs with no real API calls
 - **No automated tests** — zero test files exist; everything verified so far has been manual, step-by-step end-to-end testing
 - **`packages/detection-engine`** — only one deterministic rule exists; baseline anomaly detection and sequence detection are unimplemented, need real historical data first
@@ -159,4 +161,22 @@ Prints a new Organization id and a raw API key — **the raw key is shown once a
 - **Pub/Sub emulator state is entirely in-memory** — restarting Docker Desktop (or the container) wipes all topics/subscriptions; recreate them after every restart.
 - **`saveEvent` must be idempotent**: a client retry after a partial failure (e.g. the DB write succeeds but the subsequent Pub/Sub publish times out and the request returns a 500) will resubmit the same event id. Without idempotency handling, this throws a Prisma unique-constraint error (`P2002`) instead of succeeding safely on retry.
 - **CORS must be environment-aware, not just permissive**: `apps/api` allows any origin in dev but requires an explicit `ALLOWED_ORIGINS` allowlist in production, refusing to start without it rather than silently falling back to an open policy.
+- **`apps/ingestion` was persisting raw, unredacted event payloads to Postgres** — `packages/redaction` only ever ran in `apps/workers`, after the data was already durably stored. Fixed by redacting immediately after validation/org-check, before both `saveEvent` and `publishEvent`, so neither the database nor the queue message ever carries raw payload data. This is why redaction should happen as early as possible in a pipeline, not just before the stage that "needs" it — the SDK now also redacts at `enqueue()` time, before anything leaves the client process, for a second independent layer.
+- **`yarn lint` runs with `--max-warnings=0`, so a warning fails the run, not just an error.** Separately, running `next dev` or `next build` creates `apps/dashboard/.next/` containing generated TypeScript that violates our own lint rules. It is git-ignored, but ESLint has to ignore it too or lint fails locally; it never fails in CI, where `.next` doesn't exist.
 
+
+## Decision log
+
+Decisions made while building, with the reasoning, so they aren't re-litigated or forgotten. Items marked **open** are not yet decided; items marked **planned** are decided but not yet built.
+
+- **Phase 4 scope split (decided):** deterministic rules in `detection-engine` judge a single event with no history. Threshold and repeated-pattern rules (for example, repeated authentication failures) are deferred to Phase 5 sequence detection, matching how the plan document itself separates Phase 4 from Phase 5.
+- **GCP-specific detection rules deferred (decided):** real Cloud Audit Log event shapes can't be observed until the Phase 3 connector is live, and writing rules against guessed shapes would be unverifiable. The first new rule batch therefore targets SDK-sourced authentication and authorization events, which can be tested against real traffic.
+- **Evidence tiers for new rules (decided, built):** a single failed login or authorization denial is `suspected`, since one event is not proof of an attack. API key creation stays `confirmed`. Later correlation can raise confidence when events repeat.
+- **GCP project (decided):** a throwaway project, `testbox-3cc16`, created by the CTO on his billing account. See the Phase 3 entry under Known gaps for why the personal billing route and the live `rootedwebsite` project were both rejected.
+- **Enabled GCP APIs (decided):** only `cloudresourcemanager`, `iam`, `logging` and `apikeys`. `run.googleapis.com` is deferred until the Cloud Run monitoring item, to keep the enabled surface as small as the phase allows. Other APIs visible on the project came with Firebase defaults and are left untouched.
+- **Connector service account roles (decided, verified):** read-only and nothing broader: `roles/logging.viewer`, `roles/iam.securityReviewer`, `roles/serviceusage.apiKeysViewer`, bound to `sentinel-connector@testbox-3cc16.iam.gserviceaccount.com`. Verified by listing the project's IAM policy filtered to that account: exactly those three roles and no others.
+- **GCP access level (decided):** Owner on `testbox-3cc16` only, granted by the CTO. This corrects earlier advice that Editor would be enough: Editor can create a service account but cannot bind roles or change IAM policy, and this phase needs both, to grant the connector its roles and to generate real IAM-change events to test detection. Owner is acceptable because the project is empty and disposable.
+- **No detection rule on HTTP 4xx responses (decided):** the SDK middleware tags every 4xx as `blocked`, which puts a harmless 404 in the same bucket as a real 403, so a rule on it would be noise. Revisit if the middleware starts distinguishing 401 and 403 from other 4xx.
+- **Connector credentials (open):** prefer service account impersonation over a downloaded key file, so no long-lived secret sits on disk. If a key turns out to be unavoidable, store it outside the repository and add its path pattern to `.gitignore`. Decide after the role binding is sorted.
+- **Unit tests import source, not `dist` (decided, built):** tests under `tests/unit` import the code under test directly from `packages/*/src`, so a test always exercises the code just edited rather than a possibly stale build. `tests/tsconfig.json` exists so ESLint's type-aware parsing can see test files; without it `yarn lint` fails on them. The first suite has 10 tests covering the three detection rules and `runDetection`, and all pass.
+- **Lint scope (decided):** ESLint ignores generated Next.js output (`**/.next/**`), and `no-console` is switched off for `examples/*/src` alongside the existing `logger.ts` and `seed.ts` exceptions, since all of them print on purpose. Both fixes came from `yarn lint` failing locally after the dashboard and demos had been run.

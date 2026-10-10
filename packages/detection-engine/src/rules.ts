@@ -18,4 +18,38 @@ export const unexpectedApiKeyRule: DetectionRule = {
   },
 };
 
-export const deterministicRules = [unexpectedApiKeyRule];
+export const authenticationFailureRule: DetectionRule = {
+  id: 'authentication-failure',
+  description: 'An authentication attempt failed',
+  evaluate: (event) => {
+    if (event.action.category !== 'authentication' || event.outcome.status !== 'failure') {
+      return null;
+    }
+    return {
+      id: generateId('det'),
+      ruleId: 'authentication-failure',
+      evidenceLevel: 'suspected',
+      description: 'Failed authentication attempt observed',
+      sourceEventIds: [event.id],
+    };
+  },
+};
+
+export const authorizationDeniedRule: DetectionRule = {
+  id: 'authorization-denied',
+  description: 'An authorization check denied access',
+  evaluate: (event) => {
+    if (event.action.category !== 'authorization' || event.outcome.status !== 'blocked') {
+      return null;
+    }
+    return {
+      id: generateId('det'),
+      ruleId: 'authorization-denied',
+      evidenceLevel: 'suspected',
+      description: 'Denied authorization attempt observed',
+      sourceEventIds: [event.id],
+    };
+  },
+};
+
+export const deterministicRules = [unexpectedApiKeyRule, authenticationFailureRule, authorizationDeniedRule];
