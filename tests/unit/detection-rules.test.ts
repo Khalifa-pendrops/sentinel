@@ -1,26 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { SentinelEvent } from '@sentinel/event-schema';
 import {
   authenticationFailureRule,
   authorizationDeniedRule,
   unexpectedApiKeyRule,
 } from '../../packages/detection-engine/src/rules.js';
 import { runDetection } from '../../packages/detection-engine/src/engine.js';
-
-function makeEvent(overrides: Partial<SentinelEvent> = {}): SentinelEvent {
-  return {
-    id: 'evt_test',
-    organizationId: 'org_test',
-    timestamp: '2026-10-09T10:00:00.000Z',
-    ingestionTimestamp: '2026-10-09T10:00:01.000Z',
-    source: { type: 'application', integrationId: 'test-app' },
-    action: { type: 'test.action', category: 'test' },
-    outcome: { status: 'success' },
-    confidence: 1,
-    payload: {},
-    ...overrides,
-  };
-}
+import { makeEvent } from '../fixtures/make-event.js';
 
 describe('unexpectedApiKeyRule', () => {
   it('flags api_key.create as a confirmed detection', () => {

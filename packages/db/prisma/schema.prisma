@@ -32,9 +32,15 @@ model Event {
   organizationId  String
   organization    Organization     @relation(fields: [organizationId], references: [id])
   sourceType      String
+  integrationId   String           @default("unknown")
   actorId         String?
   resourceId      String?
   actionType      String
+  actionCategory  String           @default("unknown")
+  actionTarget    String?
+  requestId       String?
+  sourceIp        String?
+  userAgent       String?
   outcomeStatus   String
   confidence      Float
   payload         Json
@@ -43,6 +49,8 @@ model Event {
   detectionLinks  DetectionEvent[]
 
   @@index([organizationId, timestamp])
+  @@index([organizationId, actionCategory, outcomeStatus, ingestedAt])
+  @@index([organizationId, actorId, ingestedAt])
 }
 
 model Detection {
