@@ -1,0 +1,38 @@
+version: 2.1
+
+jobs:
+  build-and-push:
+    docker:
+      - image: cimg/base:current
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Log in to Docker Hub
+          command: |
+            echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+      - run:
+          name: Build and Push Ingestion Image
+          command: |
+            docker build -f infra/docker/ingestion.Dockerfile -t $DOCKERHUB_USERNAME/sentinel:ingestion .
+            docker push $DOCKERHUB_USERNAME/sentinel:ingestion
+      - run:
+          name: Build and Push Workers Image
+          command: |
+            docker build -f infra/docker/workers.Dockerfile -t $DOCKERHUB_USERNAME/sentinel:workers .
+            docker push $DOCKERHUB_USERNAME/sentinel:workers
+      - run:
+          name: Build and Push API Image
+          command: |
+            docker build -f infra/docker/api.Dockerfile -t $DOCKERHUB_USERNAME/sentinel:api .
+            docker push $DOCKERHUB_USERNAME/sentinel:api
+
+workflows:
+  build-pipeline:
+    jobs:
+      - build-and-push:
+          filters:
+            branches:
+              only:
+                - main
