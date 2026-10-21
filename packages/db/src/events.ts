@@ -21,6 +21,7 @@ export async function saveEvent(event: SentinelEvent): Promise<{ created: boolea
         outcomeStatus: event.outcome.status,
         confidence: event.confidence,
         payload: event.payload as Prisma.InputJsonValue,
+        envelope: event as unknown as Prisma.InputJsonValue,
         timestamp: new Date(event.timestamp),
       },
     });

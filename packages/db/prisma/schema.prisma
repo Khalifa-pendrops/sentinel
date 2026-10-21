@@ -46,6 +46,8 @@ model Event {
   payload         Json
   timestamp       DateTime
   ingestedAt      DateTime         @default(now())
+  publishedAt     DateTime?
+  envelope        Json?
   detectionLinks  DetectionEvent[]
 
   @@index([organizationId, timestamp])

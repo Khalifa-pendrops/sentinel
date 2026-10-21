@@ -3,6 +3,7 @@ export { findApiKeyByHash } from './api-keys.js';
 export type { ApiKeyLookupResult } from './api-keys.js';
 export { saveEvent, listEvents } from './events.js';
 export type { ListEventsParams, ListEventsResult } from './events.js';
+export { markEventPublished, findUnpublishedEvent } from './publication.js';
 export { countRecentEvents } from './history.js';
 export type { CountRecentEventsParams } from './history.js';
 export { saveDetections } from './detections.js';

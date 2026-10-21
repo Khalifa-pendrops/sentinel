@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { logger } from '@sentinel/shared';
 import { hashApiKey } from '@sentinel/auth';
-import { findApiKeyByHash, saveEvent } from '@sentinel/db';
+import { findApiKeyByHash, findUnpublishedEvent, markEventPublished, saveEvent } from '@sentinel/db';
 import { redactEvent } from '@sentinel/redaction';
 import { isValidSentinelEvent } from './validation.js';
 import { publishEvent } from './publisher.js';
@@ -37,11 +37,20 @@ async function processEvent(rawEvent: unknown, organizationId: string): Promise<
   const { created } = await saveEvent(redactedEvent);
 
   if (!created) {
-    logger.info('duplicate event ignored', { eventId: redactedEvent.id });
-    return { id: redactedEvent.id, status: 'duplicate' };
+    const pendingEvent = await findUnpublishedEvent(redactedEvent.id, organizationId);
+    if (pendingEvent === null) {
+      logger.info('duplicate event ignored', { eventId: redactedEvent.id });
+      return { id: redactedEvent.id, status: 'duplicate' };
+    }
+
+    await publishEvent(pendingEvent);
+    await markEventPublished(pendingEvent.id, organizationId);
+    logger.info('unpublished event re-published', { eventId: pendingEvent.id, organizationId });
+    return { id: pendingEvent.id, status: 'accepted' };
   }
 
   await publishEvent(redactedEvent);
+  await markEventPublished(redactedEvent.id, organizationId);
   logger.info('event accepted', { eventId: redactedEvent.id, organizationId });
   return { id: redactedEvent.id, status: 'accepted' };
 }
