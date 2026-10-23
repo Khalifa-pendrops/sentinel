@@ -6,3 +6,8 @@ node_modules
 **/.env
 coverage
 *.tsbuildinfo
+.yarn/cache
+.yarn/unplugged
+.env.*
+.github
+*.log

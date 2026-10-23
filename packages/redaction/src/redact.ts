@@ -32,9 +32,18 @@ export function redactPayload(payload: Record<string, unknown>, patterns: RegExp
   return result;
 }
 
+export function stripQueryString(target: string): string {
+  const cut = target.search(/[?#]/);
+  return cut === -1 ? target : target.slice(0, cut);
+}
+
 export function redactEvent(event: SentinelEvent, patterns: RegExp[] = DEFAULT_SENSITIVE_KEY_PATTERNS): SentinelEvent {
+  const target = event.action.target;
+  const action = target !== undefined ? { ...event.action, target: stripQueryString(target) } : event.action;
+
   return {
     ...event,
+    action,
     payload: redactPayload(event.payload, patterns),
   };
 }
