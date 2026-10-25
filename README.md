@@ -87,7 +87,7 @@ Today, defending against these multi-stage attacks is painful and fragmented:
 - **`apps/api`** — Fastify service: `GET /v1/events`, paginated and scoped to the authenticated key's organization; CORS is permissive in dev, strict (requires `ALLOWED_ORIGINS`) in production, refuses to start without it
 - **`apps/dashboard`** — Next.js Event Explorer page; fetches server-side (React Server Component) so the API key never reaches the browser, sidestepping CORS entirely for this page; visually minimal by design — the doc's real "Dashboard UX" spec (section 32: severity, incidents, risky identities) is a later phase, this is just the Phase 1 raw-event browser
 - **Queue** — real Google Cloud Pub/Sub client, running against the local emulator for dev; verified end-to-end (publish → subscribe → ack) against live Supabase data, including the multi-event join table
-- **Docker** — `infra/docker` Dockerfiles for `ingestion` and `workers`, built and verified working against live Supabase
+- **Docker** — `infra/docker` Dockerfiles for `ingestion`, `workers`, and `api`, built and verified working against live Supabase
 - **CI** — `.github/workflows/ci.yml` written and verified passing every check locally (lint, typecheck, test); blocked from actually running by a GitHub account billing lock, unrelated to the project (see gaps below)
 - **`examples/express-demo`, `examples/fastify-demo`** — real consuming apps used to verify the SDK against actual HTTP traffic end-to-end (not just synthetic test payloads), confirmed working through to the dashboard
 
@@ -139,6 +139,66 @@ yarn workspace @sentinel/db run seed
 ```
 
 Prints a new Organization id and a raw API key — **the raw key is shown once and never stored**; if lost, just run `seed` again for a fresh pair.
+
+## Docker Implementations
+
+### Architecture & Base Images
+Sentinel provides hardened, containerized images for its three backend services under `infra/docker/`:
+- **`apps/ingestion`** (`infra/docker/ingestion.Dockerfile`): Ingests, authenticates, redacts, and enqueues events. Exposes port `8080`.
+- **`apps/workers`** (`infra/docker/workers.Dockerfile`): Pulls events from Pub/Sub, executes detection and correlation pipelines, updates attack graphs, and persists incidents. Background subscriber with no HTTP port exposed.
+- **`apps/api`** (`infra/docker/api.Dockerfile`): Serves the query and management REST API. Exposes port `8081`.
+
+All three containers are based on `node:20-slim` and implement these specific patterns:
+- **Explicit OpenSSL Installation**: `RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*` ensures Prisma has the correct OpenSSL runtime libraries for Supabase TLS connections without guessing.
+- **Bypassing Yarn PATH Issues**: Runs `./node_modules/.bin/prisma generate` and `./node_modules/.bin/tsc -b apps/<service>` directly, avoiding an issue where Corepack Yarn 4.5.0 with the `node-modules` linker failed to inject `node_modules/.bin` into `PATH` under Docker.
+- **Monorepo Dependency Compilation**: `tsc -b apps/<service>` utilizes TypeScript project references to resolve and build all internal package dependencies (`@sentinel/db`, `@sentinel/shared`, `@sentinel/redaction`, etc.) from the workspace root.
+- **Optimized Context**: `.dockerignore` excludes local `node_modules`, `.next`, build caches, test coverage, and `.env` files to prevent image bloat and leaking secrets or host-specific binaries.
+
+### Building Docker Images
+Build the images from the repository root:
+
+```bash
+# Ingestion service
+docker build -f infra/docker/ingestion.Dockerfile -t sentinel:ingestion .
+
+# Workers service
+docker build -f infra/docker/workers.Dockerfile -t sentinel:workers .
+
+# API service
+docker build -f infra/docker/api.Dockerfile -t sentinel:api .
+```
+
+### Running Containers Locally
+Ensure environment variables are provided (see root `.env.example` and service-specific `.env` requirements):
+
+```bash
+# Run Ingestion
+docker run -d --name sentinel-ingestion \
+  -p 8080:8080 \
+  --env-file apps/ingestion/.env \
+  sentinel:ingestion
+
+# Run Workers (requires Pub/Sub emulator or live GCP)
+docker run -d --name sentinel-workers \
+  --env-file apps/workers/.env \
+  sentinel:workers
+
+# Run API
+docker run -d --name sentinel-api \
+  -p 8081:8081 \
+  --env-file apps/api/.env \
+  sentinel:api
+```
+
+### CI/CD Automation (CircleCI)
+Automated container builds and registry publication are handled in `.circleci/config.yml`:
+- Runs on pushes to the `main` branch.
+- Configured with `setup_remote_docker` and `docker_layer_caching: true` for build performance.
+- Authenticates with Docker Hub via `$DOCKERHUB_USERNAME` and `$DOCKERHUB_PASSWORD`.
+- Builds and pushes three tagged images:
+  - `$DOCKERHUB_USERNAME/sentinel:ingestion`
+  - `$DOCKERHUB_USERNAME/sentinel:workers`
+  - `$DOCKERHUB_USERNAME/sentinel:api`
 
 ## Observations / gotchas encountered
 

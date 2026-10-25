@@ -75,3 +75,17 @@ describe('redactPayload', () => {
     expect(redactPayload({ note: 'ok', count: 3, flag: true })).toEqual({ note: 'ok', count: 3, flag: true });
   });
 });
+
+describe('redactPayload arrays', () => {
+  it('keeps arrays nested inside arrays as arrays', () => {
+    expect(redactPayload({ matrix: [[1, 2], [3]] })).toEqual({ matrix: [[1, 2], [3]] });
+  });
+
+  it('redacts sensitive keys inside objects nested in arrays of arrays', () => {
+    expect(redactPayload({ groups: [[{ token: 't', id: 1 }]] })).toEqual({ groups: [[{ token: '[REDACTED]', id: 1 }]] });
+  });
+
+  it('keeps arrays of plain values unchanged', () => {
+    expect(redactPayload({ tags: ['a', 'b'], counts: [1, 2] })).toEqual({ tags: ['a', 'b'], counts: [1, 2] });
+  });
+});

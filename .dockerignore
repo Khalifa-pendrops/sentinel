@@ -11,3 +11,5 @@ coverage
 .env.*
 .github
 *.log
+**/.env.*
+**/.next

@@ -3,30 +3,23 @@ import { DEFAULT_SENSITIVE_KEY_PATTERNS, isSensitiveKey } from './patterns.js';
 
 const REDACTED_PLACEHOLDER = '[REDACTED]';
 
+function redactValue(value: unknown, patterns: RegExp[]): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue(item, patterns));
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return redactPayload(value as Record<string, unknown>, patterns);
+  }
+
+  return value;
+}
+
 export function redactPayload(payload: Record<string, unknown>, patterns: RegExp[] = DEFAULT_SENSITIVE_KEY_PATTERNS): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const key of Object.keys(payload)) {
-    const value = payload[key];
-
-    if (isSensitiveKey(key, patterns)) {
-      result[key] = REDACTED_PLACEHOLDER;
-      continue;
-    }
-
-    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
-      result[key] = redactPayload(value as Record<string, unknown>, patterns);
-      continue;
-    }
-
-    if (Array.isArray(value)) {
-      result[key] = value.map((item) =>
-        item !== null && typeof item === 'object' ? redactPayload(item as Record<string, unknown>, patterns) : item,
-      );
-      continue;
-    }
-
-    result[key] = value;
+    result[key] = isSensitiveKey(key, patterns) ? REDACTED_PLACEHOLDER : redactValue(payload[key], patterns);
   }
 
   return result;
