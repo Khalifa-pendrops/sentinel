@@ -24,6 +24,10 @@ app.get('/health', async (_request, reply) => {
   return reply.code(200).send({ status: 'ok' });
 });
 
+app.get('/users/:id', async (_request, reply) => {
+  return reply.code(200).send({ ok: true });
+});
+
 app.get('/boom', async (_request, reply) => {
   return reply.code(500).send({ error: 'simulated failure' });
 });

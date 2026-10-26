@@ -24,6 +24,10 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+app.get('/users/:id', (req, res) => {
+  res.status(200).json({ id: req.params['id'] });
+});
+
 app.get('/boom', (_req, res) => {
   res.status(500).json({ error: 'simulated failure' });
 });

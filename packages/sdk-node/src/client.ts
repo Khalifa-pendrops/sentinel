@@ -11,6 +11,7 @@ import type {
   HttpEventInput,
 } from './types.js';
 import { deliverBatch } from './delivery.js';
+import { endpointTarget, expressRoutePattern } from './endpoint.js';
 
 const DEFAULT_INGESTION_URL = 'http://localhost:8080';
 const DEFAULT_BATCH_SIZE = 20;
@@ -47,9 +48,11 @@ export class SentinelClient {
 
       res.on('finish', () => {
         const durationMs = Date.now() - start;
+        const expressRoute = expressRoutePattern(req.baseUrl, req.route?.path);
         this.captureHttpEvent({
           method: req.method,
           path: req.originalUrl,
+          ...(expressRoute !== undefined ? { route: expressRoute } : {}),
           statusCode: res.statusCode,
           durationMs,
           requestId,
@@ -79,6 +82,7 @@ export class SentinelClient {
         this.captureHttpEvent({
           method: request.method,
           path: request.url,
+          ...(request.routeOptions.url !== undefined ? { route: request.routeOptions.url } : {}),
           statusCode: reply.statusCode,
           durationMs,
           requestId,
@@ -164,7 +168,7 @@ export class SentinelClient {
       timestamp: new Date().toISOString(),
       ingestionTimestamp: new Date().toISOString(),
       source: { type: 'application', integrationId: this.config.applicationId },
-      action: { type: 'http.request', category: 'http', target: input.path },
+      action: { type: 'http.request', category: 'http', target: endpointTarget(input.route, input.path) },
       request: {
         requestId: input.requestId,
         ...(input.sourceIp !== undefined ? { sourceIp: input.sourceIp } : {}),

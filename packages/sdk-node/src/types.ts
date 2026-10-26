@@ -39,6 +39,7 @@ export interface HttpEventInput {
   path: string;
   statusCode: number;
   durationMs: number;
+  route?: string;
   requestId: string;
   sourceIp?: string;
   userAgent?: string;
