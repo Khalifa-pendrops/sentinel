@@ -10,3 +10,7 @@ export {
 } from './historical-rules.js';
 export type { RepeatedFailureRuleOptions } from './historical-rules.js';
 export { runHistoricalDetection } from './historical-engine.js';
+export * from './baseline.js';
+export { baselineRules, createUnseenEndpointRule, unseenEndpointRule } from './baseline-rules.js';
+export type { UnseenEndpointRuleOptions } from './baseline-rules.js';
+export { runBaselineDetection } from './baseline-engine.js';

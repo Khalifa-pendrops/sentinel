@@ -9,7 +9,7 @@
     "build": "prisma generate && tsc -b",
     "typecheck": "tsc --noEmit",
     "migrate:dev": "prisma migrate dev",
-    "seed": "node --env-file=.env dist/seed.js"
+    "seed": "node --env-file=.env dist/seed.js","seed:baseline":"node --env-file=.env dist/seed-baseline.js"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

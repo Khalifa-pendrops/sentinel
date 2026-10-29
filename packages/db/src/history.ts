@@ -21,3 +21,25 @@ export async function countRecentEvents(params: CountRecentEventsParams): Promis
     },
   });
 }
+
+export interface CountBaselineEventsParams {
+  organizationId: string;
+  integrationId: string;
+  actionCategory: string;
+  from: Date;
+  to: Date;
+  actionTarget?: string;
+}
+
+export async function countBaselineEvents(params: CountBaselineEventsParams): Promise<number> {
+  return prisma.event.count({
+    where: {
+      organizationId: params.organizationId,
+      integrationId: params.integrationId,
+      actionCategory: params.actionCategory,
+      ingestedAt: { gte: params.from, lt: params.to },
+      detectionLinks: { none: {} },
+      ...(params.actionTarget !== undefined ? { actionTarget: params.actionTarget } : {}),
+    },
+  });
+}

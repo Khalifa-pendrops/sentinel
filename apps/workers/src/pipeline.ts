@@ -1,11 +1,11 @@
 import type { SentinelEvent } from '@sentinel/event-schema';
-import { runDetection, runHistoricalDetection } from '@sentinel/detection-engine';
+import { runBaselineDetection, runDetection, runHistoricalDetection } from '@sentinel/detection-engine';
 import { correlateDetections, type CorrelatedIncident } from '@sentinel/correlation-engine';
 import { buildAttackGraph, type AttackGraph } from '@sentinel/attack-graph';
 import { redactEvent } from '@sentinel/redaction';
 import { saveDetections, saveIncident } from '@sentinel/db';
 import { logger } from '@sentinel/shared';
-import { databaseHistory } from './history.js';
+import { databaseBaselineHistory, databaseHistory } from './history.js';
 
 export interface PipelineResult {
   incidents: CorrelatedIncident[];
@@ -38,10 +38,12 @@ export async function runPipeline(rawEvents: SentinelEvent[]): Promise<PipelineR
 
   const singleEventDetections = runDetection(events);
   const historicalDetections = await runHistoricalDetection(events, databaseHistory);
-  const detections = [...singleEventDetections, ...historicalDetections];
+  const baselineDetections = await runBaselineDetection(events, databaseBaselineHistory);
+  const detections = [...singleEventDetections, ...historicalDetections, ...baselineDetections];
   logger.info('detection stage complete', {
     detectionCount: detections.length,
     historicalCount: historicalDetections.length,
+    baselineCount: baselineDetections.length,
   });
 
   if (detections.length > 0) {

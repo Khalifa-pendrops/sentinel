@@ -20,7 +20,7 @@ export default [
     },
   },
   {
-    files: ['packages/shared/src/logger.ts', 'packages/db/src/seed.ts', 'examples/*/src/**/*.ts'],
+    files: ['packages/shared/src/logger.ts', 'packages/db/src/seed*.ts', 'examples/*/src/**/*.ts'],
     rules: {
       'no-console': 'off',
     },
